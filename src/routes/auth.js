@@ -2,7 +2,7 @@ import bcrypt from 'bcryptjs';
 import { pool } from '../db.js';
 import { ApiError, bad } from '../errors.js';
 import { signToken } from '../token.js';
-import { loadUser } from '../users.js';
+import { loadMe } from '../users.js';
 import * as v from '../validate.js';
 import { clearGlobalCache } from './boards.js';
 
@@ -30,7 +30,7 @@ export default async function (app) {
       throw e;
     }
     reply.code(201);
-    return { token: signToken(id), user: await loadUser(pool, id) };
+    return { token: signToken(id), user: await loadMe(pool, id) };
   });
 
   app.post('/auth/login', async (req) => {
@@ -39,10 +39,10 @@ export default async function (app) {
     if (typeof b.username !== 'string' || typeof b.password !== 'string') throw fail;
     const row = (await pool.query('select id, password_hash from users where username = $1', [b.username])).rows[0];
     if (!row || !(await bcrypt.compare(b.password, row.password_hash))) throw fail;
-    return { token: signToken(row.id), user: await loadUser(pool, row.id) };
+    return { token: signToken(row.id), user: await loadMe(pool, row.id) };
   });
 
-  app.get('/me', { preHandler: app.auth }, async (req) => ({ user: await loadUser(pool, req.userId) }));
+  app.get('/me', { preHandler: app.auth }, async (req) => ({ user: await loadMe(pool, req.userId) }));
 
   app.post('/me/profile', { preHandler: app.auth }, async (req) => {
     const b = v.body(req);
@@ -51,7 +51,7 @@ export default async function (app) {
     const color = v.color(b.color);
     await pool.query('update users set display_name=$2, avatar=$3, color=$4 where id=$1', [req.userId, displayName, avatar, color]);
     clearGlobalCache();
-    return { user: await loadUser(pool, req.userId) };
+    return { user: await loadMe(pool, req.userId) };
   });
 
   app.get('/me/rewards', { preHandler: app.auth }, async (req) => {

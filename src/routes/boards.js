@@ -31,8 +31,9 @@ export async function groupPoints(db, groupId, season) {
 
 export async function globalPoints(db, season, limit = 100) {
   const { rows } = await db.query(
-    `select user_id, sum(amount)::int points, max(created_at) t from points_ledger
-     where season = $1 and source = 'mini_game' group by user_id order by points desc, t asc limit $2`, [season, limit]);
+    `select l.user_id, sum(l.amount)::int points, max(l.created_at) t from points_ledger l
+     join users u on u.id = l.user_id and not u.is_admin
+     where l.season = $1 and l.source = 'mini_game' group by l.user_id order by points desc, t asc limit $2`, [season, limit]);
   return rank(rows.map((r) => ({ userId: r.user_id, points: r.points })));
 }
 
@@ -60,9 +61,11 @@ export default async function (app) {
       cache.set(season, hit);
     }
     const out = hit.rows.map((r) => ({ ...r, isMe: r.user.id === req.userId }));
-    if (!out.some((r) => r.isMe)) {
+    const isAdmin = (await pool.query('select is_admin from users where id=$1', [req.userId])).rows[0]?.is_admin;
+    if (!isAdmin && !out.some((r) => r.isMe)) {
       const me = (await pool.query(
-        `with t as (select user_id, sum(amount)::int p from points_ledger where season=$1 and source='mini_game' group by user_id)
+        `with t as (select l.user_id, sum(l.amount)::int p from points_ledger l join users u on u.id = l.user_id and not u.is_admin
+                    where l.season=$1 and l.source='mini_game' group by l.user_id)
          select coalesce((select p from t where user_id=$2), 0) as p,
                 (select count(*)::int from t where p > coalesce((select p from t where user_id=$2), 0)) as above`, [season, req.userId])).rows[0];
       const users = await loadUsers(pool, [req.userId]);

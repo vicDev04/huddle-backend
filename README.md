@@ -32,8 +32,13 @@ npm start                   # runs migrations, then starts the API on $PORT
 
 - `001_init.sql`: schema.
 - `002_seed_pt.sql`: Portuguese (pt-PT) Hive Mind questions and Hot Seat prompts. Idempotent: deactivates any other global questions/prompts and only inserts missing texts.
+- `003_admin.sql`: `users.is_admin`, and makes the account with username `Huddle` admin. On start the API logs whether that account was found.
 
 New schema changes go in a new numbered file. Don't edit old ones.
+
+## Admin
+
+`/api/admin/*` (stats, question deck, Hot Seat moderation) needs a token for a user with `is_admin = true`, checked in the database on every request. There is no endpoint that sets the flag; change it in SQL.
 
 ## Jobs (in-process, `GAME_TZ`)
 

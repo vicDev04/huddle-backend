@@ -8,6 +8,7 @@ import authRoutes from './routes/auth.js';
 import groupRoutes from './routes/groups.js';
 import playRoutes from './routes/play.js';
 import boardRoutes from './routes/boards.js';
+import adminRoutes from './routes/admin.js';
 
 
 const ORIGINS = new Set((process.env.FRONTEND_ORIGINS || '').split(',').map((s) => s.trim()).filter(Boolean));
@@ -68,6 +69,7 @@ export async function buildApp({ logger = false } = {}) {
   await app.register(groupRoutes, { prefix: '/api' });
   await app.register(playRoutes, { prefix: '/api' });
   await app.register(boardRoutes, { prefix: '/api' });
+  await app.register(adminRoutes, { prefix: '/api/admin' });
   return app;
 }
 

@@ -58,7 +58,7 @@ describe('auth, avatars and profile', () => {
     const { token, user } = await register('Before');
     const r = await call('POST', '/api/me/profile', { token, body: { displayName: '  After  ', avatar: 'L.1.2.3.4.5.6.7.8.9.a.b.c.dz', color: '#ABCDEF' } });
     expect(r.status).toBe(200);
-    expect(r.body.user).toEqual({ id: user.id, displayName: 'After', avatar: 'L.1.2.3.4.5.6.7.8.9.a.b.c.dz', color: '#ABCDEF', frame: null });
+    expect(r.body.user).toEqual({ id: user.id, displayName: 'After', avatar: 'L.1.2.3.4.5.6.7.8.9.a.b.c.dz', color: '#ABCDEF', frame: null, isAdmin: false });
     expect((await call('GET', '/api/me', { token })).body.user.displayName).toBe('After');
     expect((await call('POST', '/api/me/profile', { token, body: { displayName: 'X', avatar: 'nope', color: '#ABCDEF' } })).body.error.code).toBe('INVALID_AVATAR');
     expect((await call('POST', '/api/me/profile', { token, body: { displayName: '', avatar: 'a01', color: '#ABCDEF' } })).status).toBe(400);

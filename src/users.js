@@ -19,3 +19,11 @@ export async function loadUsers(db, ids) {
 export async function loadUser(db, id) {
   return (await loadUsers(db, [id])).get(id) || null;
 }
+
+// The caller's own user object: UserPublic plus isAdmin. Never use this for other users.
+export async function loadMe(db, id) {
+  const u = await loadUser(db, id);
+  if (!u) return null;
+  const { rows } = await db.query('select is_admin from users where id = $1', [id]);
+  return { ...u, isAdmin: rows[0]?.is_admin === true };
+}
