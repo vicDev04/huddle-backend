@@ -33,12 +33,17 @@ npm start                   # runs migrations, then starts the API on $PORT
 - `001_init.sql`: schema.
 - `002_seed_pt.sql`: Portuguese (pt-PT) Hive Mind questions and Hot Seat prompts. Idempotent: deactivates any other global questions/prompts and only inserts missing texts.
 - `003_admin.sql`: `users.is_admin`, and makes the account with username `Huddle` admin. On start the API logs whether that account was found.
+- `004_coins_shop.sql`: coins, `user_items`, redeem codes (`HUDDLE-ALPHA`, `HUDDLE-BETA`), one-off coin backfill (guarded by `data_backfills`), season title backfill, and a trigger that grants `ceil(amount/5)` coins on every positive `points_ledger` insert.
 
 New schema changes go in a new numbered file. Don't edit old ones.
 
 ## Admin
 
 `/api/admin/*` (stats, question deck, Hot Seat moderation) needs a token for a user with `is_admin = true`, checked in the database on every request. There is no endpoint that sets the flag; change it in SQL.
+
+## Coins, shop and codes
+
+The item catalogue (prices, locks, title texts) is `src/items.js`. Endpoints: `GET /api/me/inventory`, `POST /api/shop/buy`, `POST /api/codes/redeem`, `POST /api/me/title`. New codes are added in SQL: `insert into codes (code, item_ids, coins, max_redemptions, expires_at) values (...)`.
 
 ## Jobs (in-process, `GAME_TZ`)
 

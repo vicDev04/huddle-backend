@@ -3,6 +3,7 @@ import { pool, tx } from './db.js';
 import { settleQuestion } from './game.js';
 import { addDays, today, seasonOf, prevSeason, TZ } from './time.js';
 import { groupPoints, globalPoints, clearGlobalCache } from './routes/boards.js';
+import { SEASON_TITLES } from './items.js';
 
 export async function nightlyClose(day = addDays(today(), -1)) {
   const rounds = (await pool.query('select group_id, hive_question_ids from daily_rounds where day = $1', [day])).rows;
@@ -25,6 +26,8 @@ async function award(c, { season, scope, groupId, userId, rank, title, perk }) {
      select $1::char(7),$2::varchar,$3::uuid,$4::uuid,$5::smallint,$6::varchar,$7::varchar where not exists (
        select 1 from season_rewards where season=$1::char(7) and scope=$2::varchar and group_id is not distinct from $3::uuid and user_id=$4::uuid)
      on conflict do nothing`, [season, scope, groupId, userId, rank, title, perk]);
+  await c.query(`insert into user_items (user_id, item_id, source) values ($1,$2,'season') on conflict do nothing`,
+    [userId, SEASON_TITLES[scope][rank]]);
 }
 
 export async function seasonClose(season = prevSeason(seasonOf(today()))) {

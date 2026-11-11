@@ -141,13 +141,21 @@ export default async function (app) {
       if (!a) throw notFound('Answer not found');
       const round = (await c.query('select hot_seat_subject_id from daily_rounds where group_id=$1 and day=$2', [a.group_id, a.day])).rows[0];
       const fav = (await c.query('select 1 from hot_seat_favorites where group_id=$1 and day=$2 and answer_id=$3', [a.group_id, a.day, id])).rowCount > 0;
-      await c.query(`delete from points_ledger where user_id=$1 and group_id=$2 and day=$3 and source='hot_seat'`, [a.author_id, a.group_id, a.day]);
+      const removed = [];
+      const del = async (userId, source) => removed.push(...(await c.query(
+        `delete from points_ledger where user_id=$1 and group_id=$2 and day=$3 and source=$4 returning user_id, amount`,
+        [userId, a.group_id, a.day, source])).rows);
+      await del(a.author_id, 'hot_seat');
       if (fav) {
-        await c.query(`delete from points_ledger where user_id=$1 and group_id=$2 and day=$3 and source='hot_seat_crowned'`, [a.author_id, a.group_id, a.day]);
-        if (round) await c.query(`delete from points_ledger where user_id=$1 and group_id=$2 and day=$3 and source='hot_seat_judge'`, [round.hot_seat_subject_id, a.group_id, a.day]);
+        await del(a.author_id, 'hot_seat_crowned');
+        if (round) await del(round.hot_seat_subject_id, 'hot_seat_judge');
         await c.query('delete from hot_seat_favorites where group_id=$1 and day=$2 and answer_id=$3', [a.group_id, a.day, id]);
       }
       await c.query('delete from hot_seat_answers where id = $1', [id]);
+      // Take back the coins those ledger rows granted (ceil(amount/5) each), never below 0.
+      const back = new Map();
+      for (const r of removed) if (r.amount > 0) back.set(r.user_id, (back.get(r.user_id) || 0) + Math.ceil(r.amount / 5));
+      for (const [uid, n] of back) await c.query('update users set coins = greatest(0, coins - $2) where id = $1', [uid, n]);
     });
     return { ok: true };
   });

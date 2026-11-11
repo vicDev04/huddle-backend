@@ -34,7 +34,7 @@ describe('auth, avatars and profile', () => {
     expect((await register('B', { avatar: 'a18' })).user.avatar).toBe('a18');
   });
   it('rejects garbage and over-long avatars', async () => {
-    for (const avatar of ['😎', 'a19', 'a00', 'hello', 'L.0.0', 'L' + '.0'.repeat(14), 'L' + '.zzz'.repeat(13), 'x'.repeat(100)]) {
+    for (const avatar of ['😎', 'a19', 'a00', 'hello', 'L.0.0', 'L' + '.0'.repeat(16), 'L' + '.0'.repeat(12), 'L' + '.zzz'.repeat(13), 'x'.repeat(100)]) {
       const r = await call('POST', '/api/auth/register', { body: { username: 'zz_' + Math.random().toString(36).slice(2, 10), password: 'password123', displayName: 'X', avatar, color: '#000000' } });
       expect(r.status, avatar).toBe(400);
       expect(r.body.error.code).toBe('INVALID_AVATAR');
@@ -58,7 +58,7 @@ describe('auth, avatars and profile', () => {
     const { token, user } = await register('Before');
     const r = await call('POST', '/api/me/profile', { token, body: { displayName: '  After  ', avatar: 'L.1.2.3.4.5.6.7.8.9.a.b.c.dz', color: '#ABCDEF' } });
     expect(r.status).toBe(200);
-    expect(r.body.user).toEqual({ id: user.id, displayName: 'After', avatar: 'L.1.2.3.4.5.6.7.8.9.a.b.c.dz', color: '#ABCDEF', frame: null, isAdmin: false });
+    expect(r.body.user).toEqual({ id: user.id, displayName: 'After', avatar: 'L.1.2.3.4.5.6.7.8.9.a.b.c.dz', color: '#ABCDEF', frame: null, title: null, isAdmin: false });
     expect((await call('GET', '/api/me', { token })).body.user.displayName).toBe('After');
     expect((await call('POST', '/api/me/profile', { token, body: { displayName: 'X', avatar: 'nope', color: '#ABCDEF' } })).body.error.code).toBe('INVALID_AVATAR');
     expect((await call('POST', '/api/me/profile', { token, body: { displayName: '', avatar: 'a01', color: '#ABCDEF' } })).status).toBe(400);

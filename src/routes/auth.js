@@ -5,6 +5,9 @@ import { signToken } from '../token.js';
 import { loadMe } from '../users.js';
 import * as v from '../validate.js';
 import { clearGlobalCache } from './boards.js';
+import { requiredItems, loadInventory, owns } from '../items.js';
+
+const locked = () => new ApiError(403, 'ITEM_LOCKED', "You don't own one of those items yet");
 
 const ROUNDS = process.env.NODE_ENV === 'test' ? 4 : 12;
 
@@ -18,6 +21,7 @@ export default async function (app) {
     const displayName = v.displayName(b.displayName);
     const avatar = v.avatar(b.avatar);
     const color = v.color(b.color);
+    if (requiredItems(avatar, color).length) throw locked(); // a new user owns nothing
     const hash = await bcrypt.hash(password, ROUNDS);
     let id;
     try {
@@ -49,6 +53,11 @@ export default async function (app) {
     const displayName = v.displayName(b.displayName);
     const avatar = v.avatar(b.avatar);
     const color = v.color(b.color);
+    const need = requiredItems(avatar, color);
+    if (need.length) {
+      const inv = await loadInventory(pool, req.userId);
+      if (!need.every((id) => owns(id, inv.ownedSet, inv.isAdmin))) throw locked();
+    }
     await pool.query('update users set display_name=$2, avatar=$3, color=$4 where id=$1', [req.userId, displayName, avatar, color]);
     clearGlobalCache();
     return { user: await loadMe(pool, req.userId) };

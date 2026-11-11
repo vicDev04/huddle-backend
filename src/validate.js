@@ -1,6 +1,6 @@
 import { bad } from './errors.js';
 
-export const AVATAR_BUILDER = /^L(\.[0-9a-z]{1,2}){13}$/;
+export const AVATAR_BUILDER = /^L(\.[0-9a-z]{1,2}){13,15}$/;
 export const AVATAR_PRESET = /^a(0[1-9]|1[0-8])$/;
 export const COLOR_RE = /^#[0-9a-fA-F]{6}$/;
 export const USERNAME_RE = /^[a-zA-Z0-9_.]{3,20}$/;
