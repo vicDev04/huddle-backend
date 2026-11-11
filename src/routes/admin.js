@@ -2,6 +2,7 @@ import { pool, tx } from '../db.js';
 import { ApiError, bad, notFound } from '../errors.js';
 import * as v from '../validate.js';
 import { today } from '../time.js';
+import { PACKS } from '../game.js';
 
 const TABLES = { hive: 'hive_questions', hot_seat: 'hot_seat_prompts' };
 const DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -28,15 +29,15 @@ async function assertNotDuplicate(db, table, text, exceptId = null) {
 
 async function loadItem(db, type, id) {
   const sql = type === 'hive'
-    ? `select q.id, q.text, q.is_active, q.group_id, g.name as crew_name
+    ? `select q.id, q.text, q.is_active, q.pack, q.group_id, g.name as crew_name
        from hive_questions q left join groups g on g.id = q.group_id where q.id = $1`
-    : 'select id, text, is_active, null::uuid as group_id, null::text as crew_name from hot_seat_prompts where id = $1';
+    : 'select id, text, is_active, pack, null::uuid as group_id, null::text as crew_name from hot_seat_prompts where id = $1';
   const row = (await db.query(sql, [id])).rows[0];
   return row ? toItem(row) : null;
 }
 
 const toItem = (r) => ({
-  id: r.id, text: r.text, isActive: r.is_active,
+  id: r.id, text: r.text, isActive: r.is_active, pack: r.pack,
   scope: r.group_id ? 'crew' : 'global', crewName: r.group_id ? r.crew_name : null,
 });
 
@@ -66,22 +67,27 @@ export default async function (app) {
   app.get('/questions', async (req) => {
     const type = req.query.type;
     tableFor(type);
+    const pack = req.query.pack;
+    if (pack !== undefined && !PACKS.includes(pack)) throw bad('INVALID_PACK', 'Unknown pack');
     const sql = type === 'hive'
-      ? `select q.id, q.text, q.is_active, q.group_id, g.name as crew_name
-         from hive_questions q left join groups g on g.id = q.group_id order by q.is_active desc, q.id desc`
-      : `select id, text, is_active, null::uuid as group_id, null::text as crew_name
-         from hot_seat_prompts order by is_active desc, id desc`;
-    return { items: (await pool.query(sql)).rows.map(toItem) };
+      ? `select q.id, q.text, q.is_active, q.pack, q.group_id, g.name as crew_name
+         from hive_questions q left join groups g on g.id = q.group_id
+         where ($1::text is null or q.pack = $1) order by q.is_active desc, q.id desc`
+      : `select id, text, is_active, pack, null::uuid as group_id, null::text as crew_name
+         from hot_seat_prompts where ($1::text is null or pack = $1) order by is_active desc, id desc`;
+    return { items: (await pool.query(sql, [pack ?? null])).rows.map(toItem) };
   });
 
   app.post('/questions', async (req, reply) => {
     const b = v.body(req);
     const table = tableFor(b.type);
     const text = cleanQuestion(b.type, b.text);
+    if (b.pack !== undefined && !PACKS.includes(b.pack)) throw bad('INVALID_PACK', 'Unknown pack');
+    const pack = b.pack ?? 'classic';
     const id = await tx(async (c) => {
       await c.query(`lock table ${table} in share row exclusive mode`);
       await assertNotDuplicate(c, table, text);
-      return (await c.query(`insert into ${table} (text, is_active) values ($1, true) returning id`, [text])).rows[0].id;
+      return (await c.query(`insert into ${table} (text, is_active, pack) values ($1, true, $2) returning id`, [text, pack])).rows[0].id;
     });
     reply.code(201);
     return { item: await loadItem(pool, b.type, id) };

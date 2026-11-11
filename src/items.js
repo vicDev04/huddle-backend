@@ -1,5 +1,5 @@
 // Item catalogue: the authority for prices and locks. price: number = shop price (0 = everyone owns it),
-// null = not for sale. how: 'shop' | 'code' | 'admin' | 'free' | 'season'.
+// null = not for sale. how: 'shop' | 'code' | 'admin' | 'free' | 'season' | 'achievement'.
 const I = (id, kind, price, how, extra = {}) => ({ id, kind, price, how, ...extra });
 
 export const ITEMS = Object.fromEntries([
@@ -28,6 +28,15 @@ export const ITEMS = Object.fromEntries([
   I('title_global_legend', 'title', null, 'season', { text: 'Global Legend' }),
   I('title_global_ace', 'title', null, 'season', { text: 'Global Ace' }),
   I('title_global_contender', 'title', null, 'season', { text: 'Global Contender' }),
+  I('title_onfire', 'title', null, 'achievement', { text: 'On Fire' }),
+  I('title_unstoppable', 'title', null, 'achievement', { text: 'Unstoppable' }),
+  I('title_flawless', 'title', null, 'achievement', { text: 'Flawless' }),
+  I('title_gamemaster', 'title', null, 'achievement', { text: 'Game Master' }),
+  I('title_mindreader', 'title', null, 'achievement', { text: 'Mind Reader' }),
+  I('title_roastchamp', 'title', null, 'achievement', { text: 'Roast Champion' }),
+  I('title_allrounder', 'title', null, 'achievement', { text: 'All-Rounder' }),
+  I('title_podium', 'title', null, 'achievement', { text: 'Podium Regular' }),
+  I('title_teamplayer', 'title', null, 'achievement', { text: 'Team Player' }),
 ].map((i) => [i.id, i]));
 
 export const ADMIN_ITEMS = Object.values(ITEMS).filter((i) => i.how === 'admin').map((i) => i.id);

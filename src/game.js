@@ -8,9 +8,17 @@ export const MINI_GAMES = {
   pattern: { name: 'Echo Grid', tagline: 'Repeat the glowing pattern. It grows every round.' },
   maths: { name: 'Brain Sprint', tagline: '30 seconds of quick sums. Wrong taps cost points.' },
   stroop: { name: 'Ink Trap', tagline: 'Tap the colour of the ink, not the word.' },
+  scramble: { name: 'Word Shuffle', tagline: '45 seconds. Unscramble as many words as you can.' },
+  memory: { name: 'Pair Up', tagline: 'Find all eight pairs in as few flips as possible.' },
+  highlow: { name: 'Higher or Lower', tagline: '30 seconds. Will the next number be higher or lower?' },
+  spotter: { name: 'Odd Tile', tagline: '30 seconds. Tap the tile that is a slightly different shade.' },
 };
-const KEYS = ['reaction', 'pattern', 'maths', 'stroop'];
-export const miniKey = (day) => KEYS[((dayIndex(day) % 4) + 4) % 4];
+const KEYS = ['reaction', 'pattern', 'maths', 'stroop', 'scramble', 'memory', 'highlow', 'spotter'];
+export const miniKey = (day) => KEYS[((dayIndex(day) % KEYS.length) + KEYS.length) % KEYS.length];
+
+export const PACKS = ['classic', 'spicy', 'office', 'family', 'couples'];
+// Pack in force on game day `day` for a groups row.
+export const packInForce = (g, day) => (g.pack_from == null || day >= g.pack_from ? g.pack : g.pack_prev || g.pack);
 
 const seq = async (fns) => { const out = []; for (const f of fns) out.push(await f()); return out; };
 const shuffle = (a) => { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
@@ -26,6 +34,9 @@ export async function ensureRound(groupId, day) {
     if (again) return again;
     const members = (await c.query('select user_id from group_members where group_id = $1 order by joined_at', [groupId])).rows.map((r) => r.user_id);
 
+    const g = (await c.query('select pack, pack_prev, pack_from from groups where id = $1', [groupId])).rows[0];
+    const pack = packInForce(g, day);
+
     const seen = (await c.query(
       `select distinct unnest(hive_question_ids) as id from daily_rounds where group_id = $1 and day > $2`, [groupId, addDays(day, -45)]
     )).rows.map((r) => r.id);
@@ -35,14 +46,18 @@ export async function ensureRound(groupId, day) {
     )).rows[0];
     if (custom) qids.push(custom.id);
     const fresh = (await c.query(
-      `select id from hive_questions where group_id is null and is_active and not (id = any($1::int[])) order by random() limit $2`,
-      [seen, 3 - qids.length]
+      `select id from hive_questions where group_id is null and is_active and pack = $3 and not (id = any($1::int[])) order by random() limit $2`,
+      [[...seen, ...qids], 3 - qids.length, pack]
     )).rows.map((r) => r.id);
     qids.push(...fresh);
-    if (qids.length < 3) { // deck exhausted: fall back to any active global question
+    if (qids.length < 3) { // pack running low: least-recently-used questions in the pack (never shown first, then oldest)
       const more = (await c.query(
-        `select id from hive_questions where group_id is null and is_active and not (id = any($1::int[])) order by random() limit $2`,
-        [qids, 3 - qids.length]
+        `select q.id from hive_questions q
+           left join (select x.id, max(r.day) as d from daily_rounds r, unnest(r.hive_question_ids) as x(id)
+                      where r.group_id = $1 group by x.id) u on u.id = q.id
+         where q.group_id is null and q.is_active and q.pack = $2 and not (q.id = any($3::int[]))
+         order by u.d nulls first, random() limit $4`,
+        [groupId, pack, qids, 3 - qids.length]
       )).rows.map((r) => r.id);
       qids.push(...more);
     }
@@ -53,10 +68,17 @@ export async function ensureRound(groupId, day) {
     const subject = shuffle([...members]).sort((a, b) => (last.get(a) || '').localeCompare(last.get(b) || ''))[0];
 
     let prompt = (await c.query(
-      `select id from hot_seat_prompts where is_active and id not in
+      `select id from hot_seat_prompts where is_active and pack = $3 and id not in
          (select hot_seat_prompt_id from daily_rounds where group_id = $1 and day > $2) order by random() limit 1`,
-      [groupId, addDays(day, -20)]
+      [groupId, addDays(day, -20), pack]
     )).rows[0];
+    if (!prompt) {
+      prompt = (await c.query(
+        `select p.id from hot_seat_prompts p
+           left join (select hot_seat_prompt_id as id, max(day) as d from daily_rounds where group_id = $1 group by 1) u on u.id = p.id
+         where p.is_active and p.pack = $2 order by u.d nulls first, random() limit 1`, [groupId, pack]
+      )).rows[0];
+    }
     if (!prompt) prompt = (await c.query('select id from hot_seat_prompts where is_active order by random() limit 1')).rows[0];
 
     await c.query(
@@ -181,6 +203,18 @@ export function scoreMini(key, raw) {
   } else if (key === 'maths' || key === 'stroop') {
     if (!isInt(raw.correct, 0, 60) || !isInt(raw.wrong, 0, 1000)) return null;
     p = raw.correct * (key === 'maths' ? 7 : 5) - raw.wrong * 3;
+  } else if (key === 'scramble') {
+    if (!isInt(raw.solved, 0, 20) || !isInt(raw.skipped, 0, 60)) return null;
+    p = raw.solved * 11 - raw.skipped * 2;
+  } else if (key === 'memory') {
+    if (!isInt(raw.moves, 0, 200) || !isInt(raw.ms, 0, 3600000)) return null;
+    p = raw.moves < 8 || raw.ms < 3000 ? 0 : 100 - (raw.moves - 8) * 5 - Math.max(0, raw.ms / 1000 - 25);
+  } else if (key === 'highlow') {
+    if (!isInt(raw.correct, 0, 60) || !isInt(raw.wrong, 0, 1000)) return null;
+    p = raw.correct * 5 - raw.wrong * 5;
+  } else if (key === 'spotter') {
+    if (!isInt(raw.correct, 0, 80) || !isInt(raw.wrong, 0, 1000)) return null;
+    p = raw.correct * 6 - raw.wrong * 4;
   } else return null;
   return Math.round(Math.min(100, Math.max(0, p)));
 }

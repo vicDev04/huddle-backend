@@ -167,6 +167,8 @@ describe('admin answer removal takes back coins', () => {
     const { group, members } = await crew(3);
     const t = (await call('GET', `/api/groups/${group.id}/today`, { token: members[0].token })).body;
     const author = members.find((m) => m.user.id !== t.hotSeat.subject.id);
+    // Keep achievement rewards out of this count.
+    await pool.query(`insert into user_achievements (user_id, achievement_id) values ($1,'first_steps')`, [author.user.id]);
     const before = await coins(author.user.id);
     await call('POST', `/api/groups/${group.id}/hot-seat/answers`, { token: author.token, body: { text: 'Uma resposta' } });
     expect(await coins(author.user.id)).toBe(before + 1);

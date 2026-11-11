@@ -45,6 +45,14 @@ New schema changes go in a new numbered file. Don't edit old ones.
 
 The item catalogue (prices, locks, title texts) is `src/items.js`. Endpoints: `GET /api/me/inventory`, `POST /api/shop/buy`, `POST /api/codes/redeem`, `POST /api/me/title`. New codes are added in SQL: `insert into codes (code, item_ids, coins, max_redemptions, expires_at) values (...)`.
 
+## Packs, achievements, challenges, profiles (update 5)
+
+- **Deck packs** (`classic`, `spicy`, `office`, `family`, `couples`): `POST /api/groups/:id/pack` (crew creator only) switches from the next game day. Rounds deal only from the pack in force, with a least-recently-used fallback when a pack runs low.
+- **Mini games**: 8-game rotation (`scramble`, `memory`, `highlow`, `spotter` added).
+- **Achievements**: catalogue in `src/achievements.js`; `GET /api/me/achievements`. Rewards (coins + achievement titles) are paid once, on unlock.
+- **Weekly crew challenge**: `GET /api/groups/:id/challenge`, `POST /api/groups/:id/challenge/claim` (50 coins).
+- **Profiles**: `GET /api/users/:id/profile` (self, crewmates, admins).
+
 ## Jobs (in-process, `GAME_TZ`)
 
 - 00:05 daily: settle yesterday's unsettled Hive questions.

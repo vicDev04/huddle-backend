@@ -75,9 +75,9 @@ describe('seed migration', () => {
       const c = await pool.connect();
       try { await c.query('begin'); await c.query(sql); await c.query('commit'); } finally { c.release(); }
     }
-    const q = (await pool.query("select count(*)::int n, count(distinct text)::int d, count(*) filter (where is_active)::int a from hive_questions where group_id is null")).rows[0];
+    const q = (await pool.query("select count(*)::int n, count(distinct text)::int d, count(*) filter (where is_active)::int a from hive_questions where group_id is null and pack = 'classic'")).rows[0];
     expect(q.n).toBe(51); expect(q.d).toBe(51); expect(q.a).toBe(50);
-    const p = (await pool.query("select count(*)::int n, count(*) filter (where is_active)::int a from hot_seat_prompts")).rows[0];
+    const p = (await pool.query("select count(*)::int n, count(*) filter (where is_active)::int a from hot_seat_prompts where pack = 'classic'")).rows[0];
     expect(p.n).toBe(21); expect(p.a).toBe(20);
   });
 });
@@ -194,8 +194,9 @@ describe('today, hive mind and hot seat', () => {
 
 describe('mini games', () => {
   const key = () => miniKey(DAY);
-  const rawFor = (k) => ({ reaction: { avgMs: 300 }, pattern: { level: 9 }, maths: { correct: 12, wrong: 2 }, stroop: { correct: 15, wrong: 1 } }[k]);
-  const expected = (k) => ({ reaction: 75, pattern: 72, maths: 78, stroop: 72 }[k]);
+  const rawFor = (k) => ({ reaction: { avgMs: 300 }, pattern: { level: 9 }, maths: { correct: 12, wrong: 2 }, stroop: { correct: 15, wrong: 1 },
+    scramble: { solved: 7, skipped: 2 }, memory: { moves: 10, ms: 30000 }, highlow: { correct: 16, wrong: 2 }, spotter: { correct: 13, wrong: 1 } }[k]);
+  const expected = (k) => ({ reaction: 75, pattern: 72, maths: 78, stroop: 72, scramble: 73, memory: 85, highlow: 70, spotter: 74 }[k]);
 
   it('recomputes points server-side and blocks a second play', async () => {
     const { token } = await register('Gamer');

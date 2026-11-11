@@ -4,6 +4,7 @@ import { assertMember } from './groups.js';
 import * as v from '../validate.js';
 import { today, seasonOf, daysLeft } from '../time.js';
 import { addPoints } from '../ledger.js';
+import { safeSync } from '../achievements.js';
 import {
   ensureRound, lockRound, settleQuestion, buildHiveItem, buildHotSeat, roundUsers, miniGameFor, streakFor, miniKey, scoreMini,
 } from '../game.js';
@@ -39,7 +40,7 @@ export default async function (app) {
     if (typeof votedUserId !== 'string' || typeof predictedUserId !== 'string') throw bad('VALIDATION_ERROR', 'votedUserId and predictedUserId are required');
     const day = today();
     await ensureRound(gid, day);
-    return tx(async (c) => {
+    const out = await tx(async (c) => {
       const round = await lockRound(c, gid, day);
       if (!Number.isInteger(qid) || !round.hive_question_ids.includes(qid)) throw notFound('That question is not in today\'s round');
       if (!round.member_ids.includes(req.userId)) throw new ApiError(403, 'NOT_IN_ROUND', 'You joined after today\'s round started');
@@ -51,8 +52,11 @@ export default async function (app) {
       const n = (await c.query('select count(*)::int n from hive_votes where group_id=$1 and day=$2 and question_id=$3', [gid, day, qid])).rows[0].n;
       if (n >= round.member_ids.length) await settleQuestion(c, gid, day, qid);
       const users = await roundUsers(c, round);
-      return { question: await buildHiveItem(c, round, qid, req.userId, users) };
+      return { question: await buildHiveItem(c, round, qid, req.userId, users), members: round.member_ids };
     });
+    // Settling can pay everyone who voted, so sync the whole round.
+    await safeSync(req.log, req.userId, ...out.members);
+    return { question: out.question };
   });
 
   app.post('/groups/:id/hot-seat/answers', async (req) => {
@@ -61,7 +65,7 @@ export default async function (app) {
     const text = v.cleanText(v.body(req).text, 2, 140);
     const day = today();
     await ensureRound(gid, day);
-    return tx(async (c) => {
+    const out = await tx(async (c) => {
       const round = await lockRound(c, gid, day);
       if (round.hot_seat_subject_id === req.userId) throw new ApiError(403, 'IS_SUBJECT', 'You\'re in the hot seat today');
       const ins = await c.query(
@@ -71,6 +75,8 @@ export default async function (app) {
       await addPoints(c, { userId: req.userId, groupId: gid, day, source: 'hot_seat', amount: 5, ref: ins.rows[0].id });
       return { hotSeat: await buildHotSeat(c, round, req.userId, await roundUsers(c, round)) };
     });
+    await safeSync(req.log, req.userId);
+    return out;
   });
 
   app.post('/groups/:id/hot-seat/favorite', async (req) => {
@@ -80,7 +86,8 @@ export default async function (app) {
     if (typeof answerId !== 'string' || !v.UUID_RE.test(answerId)) throw bad('VALIDATION_ERROR', 'answerId is required');
     const day = today();
     await ensureRound(gid, day);
-    return tx(async (c) => {
+    let author = null;
+    const out = await tx(async (c) => {
       const round = await lockRound(c, gid, day);
       if (round.hot_seat_subject_id !== req.userId) throw new ApiError(403, 'NOT_SUBJECT', 'Only the person in the hot seat can crown an answer');
       const ans = (await c.query('select id, author_id from hot_seat_answers where id=$1 and group_id=$2 and day=$3', [answerId, gid, day])).rows[0];
@@ -89,8 +96,11 @@ export default async function (app) {
       if (!ins.rowCount) throw new ApiError(409, 'ALREADY_CROWNED', 'You already crowned an answer today');
       await addPoints(c, { userId: ans.author_id, groupId: gid, day, source: 'hot_seat_crowned', amount: 25, ref: answerId });
       await addPoints(c, { userId: req.userId, groupId: gid, day, source: 'hot_seat_judge', amount: 5, ref: answerId });
+      author = ans.author_id;
       return { hotSeat: await buildHotSeat(c, round, req.userId, await roundUsers(c, round)) };
     });
+    await safeSync(req.log, author, req.userId);
+    return out;
   });
 
   app.post('/minigames/submit', async (req) => {
@@ -99,14 +109,17 @@ export default async function (app) {
     if (date !== day || gameKey !== miniKey(day)) throw bad('GAME_EXPIRED', 'That game has expired');
     const points = scoreMini(gameKey, raw);
     if (points == null) throw bad('INVALID_RAW', 'Malformed game result');
-    return tx(async (c) => {
+    const out = await tx(async (c) => {
       const ins = await c.query(
         'insert into mini_game_plays (user_id, day, game_key, raw, points) values ($1,$2,$3,$4,$5) on conflict do nothing',
         [req.userId, day, gameKey, JSON.stringify(raw), points]);
       if (!ins.rowCount) throw new ApiError(409, 'ALREADY_PLAYED', 'Already played today');
       await addPoints(c, { userId: req.userId, groupId: null, day, source: 'mini_game', amount: points });
       if (gameKey === 'reaction' && raw.avgMs < 120) req.log.warn({ userId: req.userId, raw }, 'suspicious reaction time');
+      if (gameKey === 'memory' && (raw.moves < 8 || raw.ms < 3000)) req.log.warn({ userId: req.userId, raw }, 'impossible memory result');
       return { points };
     });
+    await safeSync(req.log, req.userId);
+    return out;
   });
 }
